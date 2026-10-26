@@ -46,8 +46,8 @@ Al terminar la última canción, la lista vuelve a empezar.
 
 1. Instala el soporte para ESP32: en **Herramientas > Placa > Gestor de tarjetas**, busca `esp32` de Espressif e instálalo.
 2. Instala las librerías:
-   - **U8g2**: desde **Programa > Incluir librería > Administrar bibliotecas**.
-   - **audio-tools**, **ESP32-A2DP** y **arduino-libhelix**: no están en el gestor. Descarga cada una como ZIP (botón verde **Code > Download ZIP** en GitHub) y agrégalas con **Programa > Incluir librería > Añadir biblioteca .ZIP**.
+   - **U8g2**: desde **Sketch > Incluir biblioteca > Administrar bibliotecas**.
+   - **audio-tools**, **ESP32-A2DP** y **arduino-libhelix**: no están en el gestor. Descarga cada una como ZIP (botón verde **Code > Download ZIP** en GitHub) y agrégalas con **Sketch > Incluir biblioteca > Añadir biblioteca .ZIP**.
      - https://github.com/pschatzmann/arduino-audio-tools
      - https://github.com/pschatzmann/ESP32-A2DP
      - https://github.com/pschatzmann/arduino-libhelix

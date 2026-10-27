@@ -50,6 +50,7 @@ U8G2_SH1106_128X64_NONAME_F_HW_I2C pantalla(U8G2_R0, U8X8_PIN_NONE);
 
 bool pausado = false;
 bool sdOk = false;
+const char *errorSD = "";  // texto del error de la microSD para la pantalla
 bool estabaConectado = false;
 long totalCanciones = 0;
 char titulo[96] = "";
@@ -139,7 +140,8 @@ void dibujarPantalla() {
   // Barra superior: estado del Bluetooth
   pantalla.setFont(u8g2_font_6x10_tf);
   if (!sdOk) {
-    pantalla.drawUTF8(0, 10, "Error: microSD");
+    pantalla.drawUTF8(0, 10, "Error microSD:");
+    pantalla.drawUTF8(0, 30, errorSD);
   } else if (!out.isConnected()) {
     pantalla.drawUTF8(0, 10, "Buscando ");
     pantalla.drawUTF8(54, 10, BT_DEVICE_NAME);
@@ -248,16 +250,24 @@ void setup() {
   cfg.silence_on_nodata = true;  // manda silencio mientras esta en pausa
   out.begin(cfg);
 
-  // Reproductor
-  player.setOnStreamChangeCallback(alCambiarCancion);
-  player.setMetadataCallback(alLeerMetadatos);
-  player.setVolume(VOLUMEN_INICIAL);
-  sdOk = player.begin();
-  if (sdOk) {
+  // microSD: se revisa primero para mostrar un error claro
+  if (!SD.begin(PIN_SD_CS)) {
+    errorSD = "no se detecta";
+    Serial.println("microSD: no se detecta. Revisa cables, VCC y formato FAT32");
+  } else {
+    Serial.printf("microSD detectada: %llu MB\n", SD.cardSize() / (1024 * 1024));
+
+    // Reproductor
+    player.setOnStreamChangeCallback(alCambiarCancion);
+    player.setMetadataCallback(alLeerMetadatos);
+    player.setVolume(VOLUMEN_INICIAL);
+    sdOk = player.begin();
     totalCanciones = source.size();
     Serial.printf("Canciones encontradas: %ld\n", totalCanciones);
-  } else {
-    Serial.println("No se pudo leer la microSD");
+    if (!sdOk) {
+      errorSD = totalCanciones == 0 ? "no hay .mp3" : "no abre el .mp3";
+      Serial.println("microSD: no se pudo abrir ninguna cancion .mp3");
+    }
   }
 
   dibujarPantalla();

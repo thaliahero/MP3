@@ -1,7 +1,7 @@
 /*
  * MP3 casero - ESP32-WROOM
  *
- * Lee los .mp3 de la microSD, los decodifica y los envia por Bluetooth (A2DP)
+ * Lee los .mp3 y .wav de la microSD, los decodifica y los envia por Bluetooth (A2DP)
  * a unos audifonos cuyo nombre empiece con BT_DEVICE_NAME. Muestra la cancion
  * en la pantalla SH1106 y se controla con 3 botones:
  *   Boton 1 (D13): cancion anterior
@@ -21,6 +21,8 @@
 #include "AudioTools/Communication/A2DPStream.h"
 #include "AudioTools/Disk/AudioSourceSD.h"
 #include "AudioTools/AudioCodecs/CodecMP3Helix.h"
+#include "AudioTools/AudioCodecs/CodecWAV.h"
+#include "AudioTools/AudioCodecs/MultiDecoder.h"
 
 // ---------------- Configuracion ----------------
 
@@ -39,8 +41,12 @@ const int PIN_SD_CS = 5;  // SCK=18, MISO=19, MOSI=23 (SPI por defecto)
 
 // ---------------- Objetos ----------------
 
-AudioSourceSD source("/", "mp3", PIN_SD_CS);
-MP3DecoderHelix decoder;
+// Sin extension fija: el filtro de abajo acepta .mp3 y .wav
+AudioSourceSD source("/", "", PIN_SD_CS);
+const char *TIPOS_DE_ARCHIVO = "*.mp3|*.MP3|*.Mp3|*.wav|*.WAV|*.Wav";
+MP3DecoderHelix decoderMP3;
+WAVDecoder decoderWAV;
+MultiDecoder decoder;  // detecta si cada archivo es MP3 o WAV
 A2DPStream out;
 AudioPlayer player(source, out, decoder);
 
@@ -99,7 +105,7 @@ void tituloDesdeArchivo() {
   strncpy(titulo, nombre, sizeof(titulo) - 1);
   titulo[sizeof(titulo) - 1] = '\0';
   char *punto = strrchr(titulo, '.');
-  if (punto != nullptr && strcasecmp(punto, ".mp3") == 0) *punto = '\0';
+  if (punto != nullptr && (strcasecmp(punto, ".mp3") == 0 || strcasecmp(punto, ".wav") == 0)) *punto = '\0';
   artista[0] = '\0';
 }
 
@@ -151,7 +157,7 @@ void dibujarPantalla() {
   pantalla.drawHLine(0, 13, 128);
 
   if (sdOk && totalCanciones == 0) {
-    pantalla.drawUTF8(0, 34, "No hay .mp3 en la SD");
+    pantalla.drawUTF8(0, 34, "No hay canciones");
   } else if (sdOk) {
     // Titulo (se desplaza si no cabe)
     pantalla.setFont(u8g2_font_7x14_tf);
@@ -258,6 +264,9 @@ void setup() {
     Serial.printf("microSD detectada: %llu MB\n", SD.cardSize() / (1024 * 1024));
 
     // Reproductor
+    source.setFileFilter(TIPOS_DE_ARCHIVO);
+    decoder.addDecoder(decoderMP3, "audio/mpeg");
+    decoder.addDecoder(decoderWAV, "audio/vnd.wave");
     player.setOnStreamChangeCallback(alCambiarCancion);
     player.setMetadataCallback(alLeerMetadatos);
     player.setVolume(VOLUMEN_INICIAL);
@@ -265,8 +274,8 @@ void setup() {
     totalCanciones = source.size();
     Serial.printf("Canciones encontradas: %ld\n", totalCanciones);
     if (!sdOk) {
-      errorSD = totalCanciones == 0 ? "no hay .mp3" : "no abre el .mp3";
-      Serial.println("microSD: no se pudo abrir ninguna cancion .mp3");
+      errorSD = totalCanciones == 0 ? "no hay mp3 ni wav" : "no abre la cancion";
+      Serial.println("microSD: no se pudo abrir ninguna cancion .mp3 o .wav");
     }
   }
 

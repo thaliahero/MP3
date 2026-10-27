@@ -60,7 +60,7 @@ Al terminar la última canción, la lista vuelve a empezar.
 ## Preparar la microSD
 
 - Formato **FAT32**.
-- Copia los archivos `.mp3` (pueden ir en carpetas). Funcionan mejor a **44.1 kHz estéreo**, que es lo que usa el Bluetooth; los MP3 a 48 kHz se escucharán un poco más lentos y graves.
+- Copia los archivos `.mp3` o `.wav` (pueden ir en carpetas y mezclarse). Funcionan mejor a **44.1 kHz estéreo de 16 bits**, que es lo que usa el Bluetooth; los archivos a 48 kHz se escucharán un poco más lentos y graves. Los WAV pesan unos 10 MB por minuto, así que en MP3 caben muchas más canciones.
 - Si el MP3 tiene etiquetas ID3, la pantalla muestra el título y el artista; si no, muestra el nombre del archivo.
 - La primera vez, la librería crea un pequeño archivo de índice en la tarjeta para encontrar las canciones más rápido.
 

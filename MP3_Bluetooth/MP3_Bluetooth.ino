@@ -99,6 +99,7 @@ unsigned long avisoHasta = 0;
 unsigned long ultimaLimpieza = 0;
 unsigned long ultimoSegundo = 0;
 unsigned long ultimoReintento = 0;
+unsigned long ultimoInforme = 0;
 
 // La libreria llama a esta funcion por cada dispositivo de audio que encuentra.
 // Mientras no hayas elegido, solo los guarda en la lista (y devuelve false para
@@ -343,8 +344,10 @@ void dibujarConectando() {
   char linea[24];
   snprintf(linea, sizeof(linea), "%.20s", elegidoNombre);
   pantalla.drawUTF8(0, 32, linea);
-  char espera[24];
-  snprintf(espera, sizeof(espera), "Espera... %lus", (millis() - inicioConexion) / 1000);
+  char espera[28];
+  snprintf(espera, sizeof(espera), "%s %lus",
+           out.source().is_discovery_active() ? "Buscando" : "Enlazando",
+           (millis() - inicioConexion) / 1000);
   pantalla.drawUTF8(0, 46, espera);
   pantalla.drawUTF8(0, 63, "1: volver a la lista");
 }
@@ -556,6 +559,14 @@ void loop() {
   bool b1 = fuePresionado(0);
   bool b2 = fuePresionado(1);
   bool b3 = fuePresionado(2);
+  if (b1 || b2 || b3) {
+    Serial.printf("Boton %d (estado %d, %d dispositivos)\n", b1 ? 1 : (b2 ? 2 : 3), (int)estado, (int)numDispositivos);
+  }
+  if (millis() - ultimoInforme > 5000) {
+    ultimoInforme = millis();
+    Serial.printf("[estado=%d dispositivos=%d buscando=%d conectado=%d]\n", (int)estado, (int)numDispositivos,
+                  (int)out.source().is_discovery_active(), (int)conectado);
+  }
   if (estado == MENU) {
     if (b1) menuSubir();
     if (b2) menuElegir();

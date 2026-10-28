@@ -100,6 +100,7 @@ unsigned long ultimaLimpieza = 0;
 unsigned long ultimoSegundo = 0;
 unsigned long ultimoReintento = 0;
 unsigned long ultimoInforme = 0;
+int ultimosPines = -1;
 
 // La libreria llama a esta funcion por cada dispositivo de audio que encuentra.
 // Mientras no hayas elegido, solo los guarda en la lista (y devuelve false para
@@ -559,6 +560,11 @@ void loop() {
   bool b1 = fuePresionado(0);
   bool b2 = fuePresionado(1);
   bool b3 = fuePresionado(2);
+  int pines = digitalRead(PIN_BTN_ANTERIOR) | (digitalRead(PIN_BTN_PLAY) << 1) | (digitalRead(PIN_BTN_SIGUIENTE) << 2);
+  if (pines != ultimosPines) {
+    ultimosPines = pines;  // 1 = suelto, 0 = presionado (conectado a GND)
+    Serial.printf("Pines: D13=%d D14=%d D27=%d\n", pines & 1, (pines >> 1) & 1, (pines >> 2) & 1);
+  }
   if (b1 || b2 || b3) {
     Serial.printf("Boton %d (estado %d, %d dispositivos)\n", b1 ? 1 : (b2 ? 2 : 3), (int)estado, (int)numDispositivos);
   }

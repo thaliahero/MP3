@@ -34,11 +34,11 @@ Los botones no necesitan resistencias: el código activa las resistencias pull-u
 
 ## Controles
 
-| Botón | Acción |
-|---|---|
-| Botón 1 | Canción anterior (desde la primera salta a la última) |
-| Botón 2 | Pausa / play |
-| Botón 3 | Canción siguiente (desde la última vuelve a la primera) |
+| Botón | En el menú de dispositivos | Mientras suena la música |
+|---|---|---|
+| Botón 1 | Subir | Canción anterior (desde la primera salta a la última) |
+| Botón 2 | Elegir | Pausa / play |
+| Botón 3 | Bajar | Canción siguiente (desde la última vuelve a la primera) |
 
 Al terminar la última canción, la lista vuelve a empezar.
 
@@ -66,10 +66,14 @@ Al terminar la última canción, la lista vuelve a empezar.
 
 ## Conectar los audífonos
 
-1. Pon los AirPods en modo de emparejamiento: con los AirPods dentro del estuche y la tapa abierta, mantén presionado el botón trasero hasta que la luz parpadee en blanco.
-2. Enciende el MP3. La pantalla dice "Buscando AirPods" hasta que se conecta y luego "BT conectado".
+1. Pon tus audífonos en modo de emparejamiento. En los AirPods: con los AirPods dentro del estuche y la tapa abierta, mantén presionado el botón trasero hasta que la luz parpadee en blanco.
+2. Enciende el MP3. La pantalla dice "Buscando..." y va listando los dispositivos de audio Bluetooth que encuentra.
+3. Muévete con los botones 1 (subir) y 3 (bajar), y elige con el botón 2. Aparece "Conectando a..." y, cuando se conecta, empieza la música.
+4. Si en "Conectando" te equivocaste de dispositivo, el botón 1 vuelve a la lista.
 
-El MP3 se conecta al primer dispositivo cuyo nombre **empieza** con `AirPods`, así que "AirPods de Thalia" o "AirPods Pro" también sirven. Para usar otros audífonos, cambia `BT_DEVICE_NAME` al inicio del sketch. El volumen inicial se cambia en `VOLUMEN_INICIAL`.
+Los audífonos tienen que seguir en modo de emparejamiento hasta que se conecten. Si se corta la conexión mientras suena, el MP3 intenta reconectarse solo. Para elegir otros audífonos, reinicia el MP3 (botón EN de la ESP32 o apágalo y préndelo).
+
+El volumen inicial se cambia en `VOLUMEN_INICIAL`, al inicio del sketch.
 
 ## Notas
 

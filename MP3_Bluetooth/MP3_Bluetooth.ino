@@ -1,9 +1,16 @@
 /*
  * MP3 casero - ESP32-WROOM
  *
- * Lee los .mp3 y .wav de la microSD, los decodifica y los envia por Bluetooth (A2DP)
- * a unos audifonos cuyo nombre empiece con BT_DEVICE_NAME. Muestra la cancion
- * en la pantalla SH1106 y se controla con 3 botones:
+ * Al encender busca dispositivos Bluetooth de audio y los muestra en la
+ * pantalla. Tu eliges a cual conectarte y hasta entonces empieza la musica.
+ * Lee los .mp3 y .wav de la microSD y los envia por Bluetooth (A2DP).
+ *
+ * Menu de dispositivos:
+ *   Boton 1 (D13): subir
+ *   Boton 2 (D14): elegir
+ *   Boton 3 (D27): bajar
+ *
+ * Mientras suena la musica:
  *   Boton 1 (D13): cancion anterior
  *   Boton 2 (D14): pausa / play
  *   Boton 3 (D27): cancion siguiente
@@ -25,10 +32,6 @@
 #include "AudioTools/AudioCodecs/MultiDecoder.h"
 
 // ---------------- Configuracion ----------------
-
-// Se conecta al primer dispositivo cuyo nombre EMPIECE con este texto,
-// asi "AirPods de Thalia" o "AirPods Pro" tambien sirven.
-const char *BT_DEVICE_NAME = "AirPods";
 
 const float VOLUMEN_INICIAL = 0.5;  // 0.0 a 1.0
 
@@ -57,13 +60,103 @@ U8G2_SH1106_128X64_NONAME_F_HW_I2C pantalla(U8G2_R0, U8X8_PIN_NONE);
 bool pausado = false;
 bool sdOk = false;
 const char *errorSD = "";  // texto del error de la microSD para la pantalla
-bool estabaConectado = false;
 long totalCanciones = 0;
 char titulo[96] = "";
 char artista[64] = "";
-bool redibujar = true;
+volatile bool redibujar = true;
 int scrollX = 0;
 unsigned long ultimoScroll = 0;
+
+// ---------------- Dispositivos Bluetooth ----------------
+
+struct DispositivoBT {
+  char nombre[32];
+  uint8_t dir[6];
+};
+
+const int MAX_DISPOSITIVOS = 10;
+const int FILAS_MENU = 3;
+DispositivoBT dispositivos[MAX_DISPOSITIVOS];
+volatile int numDispositivos = 0;
+volatile bool hayElegido = false;
+uint8_t elegidoDir[6];
+char elegidoNombre[32] = "";
+portMUX_TYPE candado = portMUX_INITIALIZER_UNLOCKED;
+
+enum Estado { MENU, CONECTANDO, REPRODUCIENDO };
+Estado estado = MENU;
+int seleccion = 0;
+int inicioLista = 0;
+bool autoReconexionActiva = false;
+
+// La libreria llama a esta funcion por cada dispositivo de audio que encuentra.
+// Mientras no hayas elegido, solo los guarda en la lista (y devuelve false para
+// seguir buscando). Cuando ya elegiste, devuelve true solo para ese dispositivo.
+bool alEncontrarDispositivo(const char *nombre, esp_bd_addr_t dir, int rssi) {
+  bool conectar = false;
+  portENTER_CRITICAL(&candado);
+  if (hayElegido) {
+    conectar = memcmp(dir, elegidoDir, 6) == 0;
+  } else {
+    int i = 0;
+    while (i < numDispositivos && memcmp(dispositivos[i].dir, dir, 6) != 0) i++;
+    if (i == numDispositivos && numDispositivos < MAX_DISPOSITIVOS) {
+      DispositivoBT &d = dispositivos[i];
+      memcpy(d.dir, dir, 6);
+      if (nombre != nullptr && nombre[0] != '\0') {
+        strncpy(d.nombre, nombre, sizeof(d.nombre) - 1);
+        d.nombre[sizeof(d.nombre) - 1] = '\0';
+      } else {
+        snprintf(d.nombre, sizeof(d.nombre), "Dispositivo %02X%02X", dir[4], dir[5]);
+      }
+      numDispositivos = numDispositivos + 1;
+      redibujar = true;
+    }
+  }
+  portEXIT_CRITICAL(&candado);
+  return conectar;
+}
+
+void ajustarVentanaMenu() {
+  if (seleccion < inicioLista) inicioLista = seleccion;
+  if (seleccion >= inicioLista + FILAS_MENU) inicioLista = seleccion - FILAS_MENU + 1;
+}
+
+void menuSubir() {
+  int n = numDispositivos;
+  if (n == 0) return;
+  seleccion = (seleccion - 1 + n) % n;
+  ajustarVentanaMenu();
+  redibujar = true;
+}
+
+void menuBajar() {
+  int n = numDispositivos;
+  if (n == 0) return;
+  seleccion = (seleccion + 1) % n;
+  ajustarVentanaMenu();
+  redibujar = true;
+}
+
+void menuElegir() {
+  if (numDispositivos == 0) return;
+  portENTER_CRITICAL(&candado);
+  memcpy(elegidoDir, dispositivos[seleccion].dir, 6);
+  strncpy(elegidoNombre, dispositivos[seleccion].nombre, sizeof(elegidoNombre) - 1);
+  elegidoNombre[sizeof(elegidoNombre) - 1] = '\0';
+  hayElegido = true;
+  portEXIT_CRITICAL(&candado);
+  estado = CONECTANDO;
+  redibujar = true;
+}
+
+void volverAlMenu() {
+  portENTER_CRITICAL(&candado);
+  hayElegido = false;
+  portEXIT_CRITICAL(&candado);
+  estado = MENU;
+  redibujar = true;
+}
 
 // ---------------- Botones ----------------
 
@@ -140,25 +233,72 @@ void dibujarIconoPausa(int x, int y) {
   pantalla.drawBox(x + 5, y, 3, 9);
 }
 
+void dibujarMenu() {
+  pantalla.setFont(u8g2_font_6x10_tf);
+  pantalla.drawUTF8(0, 10, "Dispositivos BT");
+  pantalla.drawHLine(0, 13, 128);
+  int n = numDispositivos;
+  if (n == 0) {
+    pantalla.drawUTF8(0, 30, "Buscando...");
+    pantalla.drawUTF8(0, 44, "Pon tus audifonos en");
+    pantalla.drawUTF8(0, 56, "modo emparejamiento");
+    return;
+  }
+  for (int fila = 0; fila < FILAS_MENU; fila++) {
+    int i = inicioLista + fila;
+    if (i >= n) break;
+    int y = 25 + fila * 12;
+    if (i == seleccion) pantalla.drawUTF8(0, y, ">");
+    char linea[24];
+    snprintf(linea, sizeof(linea), "%.19s", dispositivos[i].nombre);
+    pantalla.drawUTF8(8, y, linea);
+  }
+  pantalla.drawUTF8(0, 63, "1:sube 2:OK 3:baja");
+}
+
+void dibujarConectando() {
+  pantalla.setFont(u8g2_font_6x10_tf);
+  pantalla.drawUTF8(0, 10, "Conectando a:");
+  pantalla.drawHLine(0, 13, 128);
+  char linea[24];
+  snprintf(linea, sizeof(linea), "%.20s", elegidoNombre);
+  pantalla.drawUTF8(0, 32, linea);
+  pantalla.drawUTF8(0, 46, "Espera un momento...");
+  pantalla.drawUTF8(0, 63, "1: volver a la lista");
+}
+
 void dibujarPantalla() {
   pantalla.clearBuffer();
 
-  // Barra superior: estado del Bluetooth
-  pantalla.setFont(u8g2_font_6x10_tf);
   if (!sdOk) {
+    pantalla.setFont(u8g2_font_6x10_tf);
     pantalla.drawUTF8(0, 10, "Error microSD:");
+    pantalla.drawHLine(0, 13, 128);
     pantalla.drawUTF8(0, 30, errorSD);
-  } else if (!out.isConnected()) {
-    pantalla.drawUTF8(0, 10, "Buscando ");
-    pantalla.drawUTF8(54, 10, BT_DEVICE_NAME);
-  } else {
-    pantalla.drawUTF8(0, 10, "BT conectado");
+    pantalla.sendBuffer();
+    return;
   }
+  if (estado == MENU) {
+    dibujarMenu();
+    pantalla.sendBuffer();
+    return;
+  }
+  if (estado == CONECTANDO) {
+    dibujarConectando();
+    pantalla.sendBuffer();
+    return;
+  }
+
+  // Barra superior: dispositivo conectado
+  pantalla.setFont(u8g2_font_6x10_tf);
+  char barra[24];
+  snprintf(barra, sizeof(barra), "BT: %.16s", elegidoNombre);
+  pantalla.drawUTF8(0, 10, barra);
   pantalla.drawHLine(0, 13, 128);
 
-  if (sdOk && totalCanciones == 0) {
+  if (totalCanciones == 0) {
     pantalla.drawUTF8(0, 34, "No hay canciones");
-  } else if (sdOk) {
+  } else {
     // Titulo (se desplaza si no cabe)
     pantalla.setFont(u8g2_font_7x14_tf);
     int ancho = pantalla.getUTF8Width(titulo);
@@ -189,6 +329,7 @@ void dibujarPantalla() {
 
 // Avanza el texto del titulo cuando es mas ancho que la pantalla.
 void actualizarScroll() {
+  if (estado != REPRODUCIENDO) return;
   if (millis() - ultimoScroll < 120) return;
   ultimoScroll = millis();
   pantalla.setFont(u8g2_font_7x14_tf);
@@ -248,10 +389,12 @@ void setup() {
   pantalla.drawUTF8(20, 36, "MP3 casero");
   pantalla.sendBuffer();
 
-  // Bluetooth: no bloquea, sigue buscando los audifonos en segundo plano
+  // Bluetooth: no bloquea. Empieza a buscar dispositivos y la funcion
+  // alEncontrarDispositivo los va agregando a la lista del menu.
+  out.source().set_ssid_callback(alEncontrarDispositivo);
   auto cfg = out.defaultConfig(TX_MODE);
-  cfg.name = BT_DEVICE_NAME;
-  cfg.auto_reconnect = true;
+  cfg.name = "MP3";  // se ignora: la conexion la decide alEncontrarDispositivo
+  cfg.auto_reconnect = false;  // se activa despues de la primera conexion
   cfg.wait_for_connection = false;
   cfg.silence_on_nodata = true;  // manda silencio mientras esta en pausa
   out.begin(cfg);
@@ -284,17 +427,36 @@ void setup() {
 
 void loop() {
   bool conectado = out.isConnected();
-  if (conectado != estabaConectado) {
-    estabaConectado = conectado;
+  if (estado == CONECTANDO && conectado) {
+    estado = REPRODUCIENDO;
+    redibujar = true;
+    if (!autoReconexionActiva) {
+      // A partir de ahora, si se corta la conexion intenta volver sola
+      out.source().set_auto_reconnect(true, 3);
+      autoReconexionActiva = true;
+    }
+  } else if (estado == REPRODUCIENDO && !conectado) {
+    estado = CONECTANDO;  // se corto: muestra "Conectando" mientras reintenta
     redibujar = true;
   }
 
-  if (fuePresionado(botones[0])) cancionAnterior();
-  if (fuePresionado(botones[1])) playPausa();
-  if (fuePresionado(botones[2])) cancionSiguiente();
+  bool b1 = fuePresionado(botones[0]);
+  bool b2 = fuePresionado(botones[1]);
+  bool b3 = fuePresionado(botones[2]);
+  if (estado == MENU) {
+    if (b1) menuSubir();
+    if (b2) menuElegir();
+    if (b3) menuBajar();
+  } else if (estado == CONECTANDO) {
+    if (b1) volverAlMenu();
+  } else {
+    if (b1) cancionAnterior();
+    if (b2) playPausa();
+    if (b3) cancionSiguiente();
+  }
 
   // Solo decodificamos cuando los audifonos estan conectados
-  if (sdOk && conectado && !pausado) {
+  if (sdOk && estado == REPRODUCIENDO && !pausado) {
     player.copy();
     // Si se termino la lista, vuelve a empezar
     if (!player.isActive() && totalCanciones > 0) {

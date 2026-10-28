@@ -71,7 +71,7 @@ Al terminar la última canción, la lista vuelve a empezar.
 3. Muévete con los botones 1 (subir) y 3 (bajar), y elige con el botón 2. Aparece "Conectando a..." y, cuando se conecta, empieza la música.
 4. Si en "Conectando" te equivocaste de dispositivo, el botón 1 vuelve a la lista.
 
-Los audífonos tienen que seguir en modo de emparejamiento hasta que se conecten. Si se corta la conexión mientras suena, el MP3 intenta reconectarse solo. Para elegir otros audífonos, reinicia el MP3 (botón EN de la ESP32 o apágalo y préndelo).
+Los audífonos tienen que seguir en modo de emparejamiento hasta que se conecten. La lista solo muestra dispositivos que se vieron en los últimos 30 segundos: si unos audífonos salen del modo de emparejamiento, desaparecen de la lista. Si no se conecta en un minuto, el MP3 vuelve a la lista. Si se corta la conexión mientras suena, el MP3 intenta reconectarse solo. Para elegir otros audífonos, reinicia el MP3 (botón EN de la ESP32 o apágalo y préndelo).
 
 El volumen inicial se cambia en `VOLUMEN_INICIAL`, al inicio del sketch.
 

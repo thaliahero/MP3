@@ -30,6 +30,7 @@
 #include "AudioTools/AudioCodecs/CodecMP3Helix.h"
 #include "AudioTools/AudioCodecs/CodecWAV.h"
 #include "AudioTools/AudioCodecs/MultiDecoder.h"
+#include "esp_gap_bt_api.h"
 
 // ---------------- Configuracion ----------------
 
@@ -72,6 +73,7 @@ unsigned long ultimoScroll = 0;
 struct DispositivoBT {
   char nombre[32];
   uint8_t dir[6];
+  unsigned long visto;  // ultima vez que se encontro (millis)
 };
 
 const int MAX_DISPOSITIVOS = 10;
@@ -89,6 +91,15 @@ int seleccion = 0;
 int inicioLista = 0;
 bool autoReconexionActiva = false;
 
+const unsigned long OLVIDAR_DISPOSITIVO_MS = 30000;  // desaparece de la lista si no se vuelve a ver
+const unsigned long TIEMPO_MAX_CONEXION_MS = 60000;  // si no conecta, vuelve al menu
+const unsigned long REINTENTO_BUSQUEDA_MS = 25000;   // vuelve a buscar el dispositivo elegido
+unsigned long inicioConexion = 0;
+unsigned long avisoHasta = 0;
+unsigned long ultimaLimpieza = 0;
+unsigned long ultimoSegundo = 0;
+unsigned long ultimoReintento = 0;
+
 // La libreria llama a esta funcion por cada dispositivo de audio que encuentra.
 // Mientras no hayas elegido, solo los guarda en la lista (y devuelve false para
 // seguir buscando). Cuando ya elegiste, devuelve true solo para ese dispositivo.
@@ -100,8 +111,11 @@ bool alEncontrarDispositivo(const char *nombre, esp_bd_addr_t dir, int rssi) {
   } else {
     int i = 0;
     while (i < numDispositivos && memcmp(dispositivos[i].dir, dir, 6) != 0) i++;
-    if (i == numDispositivos && numDispositivos < MAX_DISPOSITIVOS) {
+    if (i < numDispositivos) {
+      dispositivos[i].visto = millis();  // ya estaba: solo marca que sigue ahi
+    } else if (numDispositivos < MAX_DISPOSITIVOS) {
       DispositivoBT &d = dispositivos[i];
+      d.visto = millis();
       memcpy(d.dir, dir, 6);
       if (nombre != nullptr && nombre[0] != '\0') {
         strncpy(d.nombre, nombre, sizeof(d.nombre) - 1);
@@ -120,6 +134,55 @@ bool alEncontrarDispositivo(const char *nombre, esp_bd_addr_t dir, int rssi) {
 void ajustarVentanaMenu() {
   if (seleccion < inicioLista) inicioLista = seleccion;
   if (seleccion >= inicioLista + FILAS_MENU) inicioLista = seleccion - FILAS_MENU + 1;
+}
+
+// Quita de la lista los dispositivos que ya no se ven (por ejemplo, unos
+// audifonos que salieron del modo de emparejamiento). Conserva lo que
+// tienes seleccionado.
+void limpiarDispositivosViejos() {
+  uint8_t dirSeleccion[6];
+  bool habiaSeleccion = seleccion < numDispositivos;
+  if (habiaSeleccion) memcpy(dirSeleccion, dispositivos[seleccion].dir, 6);
+
+  bool cambio = false;
+  portENTER_CRITICAL(&candado);
+  int j = 0;
+  for (int i = 0; i < numDispositivos; i++) {
+    if (millis() - dispositivos[i].visto <= OLVIDAR_DISPOSITIVO_MS) {
+      if (j != i) dispositivos[j] = dispositivos[i];
+      j++;
+    }
+  }
+  if (j != numDispositivos) {
+    numDispositivos = j;
+    cambio = true;
+  }
+  portEXIT_CRITICAL(&candado);
+  if (!cambio) return;
+
+  int nueva = -1;
+  if (habiaSeleccion) {
+    for (int i = 0; i < numDispositivos; i++) {
+      if (memcmp(dispositivos[i].dir, dirSeleccion, 6) == 0) nueva = i;
+    }
+  }
+  if (nueva < 0) nueva = numDispositivos > 0 ? min(seleccion, (int)numDispositivos - 1) : 0;
+  seleccion = nueva;
+  if (inicioLista > seleccion) inicioLista = seleccion;
+  if (inicioLista > 0 && inicioLista + FILAS_MENU > numDispositivos) {
+    inicioLista = max(0, (int)numDispositivos - FILAS_MENU);
+  }
+  ajustarVentanaMenu();
+  redibujar = true;
+}
+
+// Si un intento de conexion falla, la libreria se queda quieta y ya no busca.
+// Esto arranca otra busqueda para que pueda volver a encontrar el dispositivo.
+void asegurarBusqueda() {
+  if (!out.source().is_discovery_active()) {
+    Serial.println("Reiniciando la busqueda Bluetooth");
+    esp_bt_gap_start_discovery(ESP_BT_INQ_MODE_GENERAL_INQUIRY, 10, 0);
+  }
 }
 
 void menuSubir() {
@@ -147,7 +210,11 @@ void menuElegir() {
   hayElegido = true;
   portEXIT_CRITICAL(&candado);
   estado = CONECTANDO;
+  inicioConexion = millis();
+  ultimoReintento = millis();
   redibujar = true;
+  Serial.printf("Conectando a %s (%02X:%02X:%02X:%02X:%02X:%02X)\n", elegidoNombre,
+                elegidoDir[0], elegidoDir[1], elegidoDir[2], elegidoDir[3], elegidoDir[4], elegidoDir[5]);
 }
 
 void volverAlMenu() {
@@ -243,6 +310,14 @@ void dibujarMenu() {
     pantalla.drawUTF8(0, 30, "Buscando...");
     pantalla.drawUTF8(0, 44, "Pon tus audifonos en");
     pantalla.drawUTF8(0, 56, "modo emparejamiento");
+    if (millis() < avisoHasta) {
+      pantalla.setDrawColor(0);
+      pantalla.drawBox(0, 15, 128, 49);
+      pantalla.setDrawColor(1);
+      pantalla.drawUTF8(0, 30, "No se pudo conectar.");
+      pantalla.drawUTF8(0, 44, "Revisa el modo de");
+      pantalla.drawUTF8(0, 56, "emparejamiento.");
+    }
     return;
   }
   for (int fila = 0; fila < FILAS_MENU; fila++) {
@@ -254,7 +329,11 @@ void dibujarMenu() {
     snprintf(linea, sizeof(linea), "%.19s", dispositivos[i].nombre);
     pantalla.drawUTF8(8, y, linea);
   }
-  pantalla.drawUTF8(0, 63, "1:sube 2:OK 3:baja");
+  if (millis() < avisoHasta) {
+    pantalla.drawUTF8(0, 63, "No se pudo conectar");
+  } else {
+    pantalla.drawUTF8(0, 63, "1:sube 2:OK 3:baja");
+  }
 }
 
 void dibujarConectando() {
@@ -264,7 +343,9 @@ void dibujarConectando() {
   char linea[24];
   snprintf(linea, sizeof(linea), "%.20s", elegidoNombre);
   pantalla.drawUTF8(0, 32, linea);
-  pantalla.drawUTF8(0, 46, "Espera un momento...");
+  char espera[24];
+  snprintf(espera, sizeof(espera), "Espera... %lus", (millis() - inicioConexion) / 1000);
+  pantalla.drawUTF8(0, 46, espera);
   pantalla.drawUTF8(0, 63, "1: volver a la lista");
 }
 
@@ -393,6 +474,7 @@ void setup() {
   // Bluetooth: no bloquea. Empieza a buscar dispositivos y la funcion
   // alEncontrarDispositivo los va agregando a la lista del menu.
   out.source().set_ssid_callback(alEncontrarDispositivo);
+  out.source().set_ssp_enabled(true);  // los AirPods exigen emparejamiento seguro (SSP)
   auto cfg = out.defaultConfig(TX_MODE);
   cfg.name = "MP3";  // se ignora: la conexion la decide alEncontrarDispositivo
   cfg.auto_reconnect = false;  // se activa despues de la primera conexion
@@ -438,7 +520,37 @@ void loop() {
     }
   } else if (estado == REPRODUCIENDO && !conectado) {
     estado = CONECTANDO;  // se corto: muestra "Conectando" mientras reintenta
+    inicioConexion = millis();
     redibujar = true;
+  }
+
+  if (estado == MENU && millis() - ultimaLimpieza > 1000) {
+    ultimaLimpieza = millis();
+    limpiarDispositivosViejos();
+    // (los primeros ~15 s la libreria arranca la busqueda por su cuenta)
+    if (millis() > 15000 && millis() - ultimoReintento > 3000) {
+      ultimoReintento = millis();
+      asegurarBusqueda();
+    }
+  }
+  if (estado == CONECTANDO) {
+    if (!autoReconexionActiva && millis() - inicioConexion > TIEMPO_MAX_CONEXION_MS) {
+      // No conecto: vuelve al menu con la lista vacia para buscar de nuevo
+      Serial.println("No se pudo conectar: vuelve al menu");
+      volverAlMenu();
+      portENTER_CRITICAL(&candado);
+      numDispositivos = 0;
+      portEXIT_CRITICAL(&candado);
+      seleccion = 0;
+      inicioLista = 0;
+      avisoHasta = millis() + 5000;
+    } else if (!autoReconexionActiva && millis() - ultimoReintento > REINTENTO_BUSQUEDA_MS) {
+      ultimoReintento = millis();
+      asegurarBusqueda();
+    } else if (millis() - ultimoSegundo >= 1000) {
+      ultimoSegundo = millis();
+      redibujar = true;  // actualiza el contador de segundos
+    }
   }
 
   bool b1 = fuePresionado(0);

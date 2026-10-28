@@ -174,7 +174,8 @@ Boton botones[] = {
 };
 
 // Devuelve true una sola vez cuando el boton se presiona (con antirrebote).
-bool fuePresionado(Boton &b) {
+bool fuePresionado(int numero) {
+  Boton &b = botones[numero];
   bool lectura = digitalRead(b.pin);
   if (lectura != b.ultimaLectura) {
     b.ultimoCambio = millis();
@@ -440,9 +441,9 @@ void loop() {
     redibujar = true;
   }
 
-  bool b1 = fuePresionado(botones[0]);
-  bool b2 = fuePresionado(botones[1]);
-  bool b3 = fuePresionado(botones[2]);
+  bool b1 = fuePresionado(0);
+  bool b2 = fuePresionado(1);
+  bool b3 = fuePresionado(2);
   if (estado == MENU) {
     if (b1) menuSubir();
     if (b2) menuElegir();

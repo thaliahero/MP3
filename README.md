@@ -29,16 +29,30 @@ El firmware está en [`MP3_Bluetooth/MP3_Bluetooth.ino`](MP3_Bluetooth/MP3_Bluet
 | Botón 1: anterior | una pata | D13 (la otra a GND) |
 | Botón 2: play/pausa | una pata | D14 (la otra a GND) |
 | Botón 3: siguiente | una pata | D27 (la otra a GND) |
+| Encoder KY-040 | CLK | D32 |
+| | DT | D33 |
+| | SW | D4 |
+| | + | 3V3 (no 5 V) |
+| | GND | GND |
+| Jack de audio | Izquierdo (punta) | D25, con un capacitor de 100 µF en serie (+ hacia la ESP32) |
+| | Derecho (anillo) | D26, con un capacitor de 100 µF en serie (+ hacia la ESP32) |
+| | Tierra (manga) | GND |
 
 Los botones no necesitan resistencias: el código activa las resistencias pull-up internas de la ESP32.
 
 ## Controles
 
-| Botón | En el menú de dispositivos | Mientras suena la música |
+Al encender aparece el **menú principal**: gira el encoder para elegir entre **Bluetooth** y **Audífono con cable**, y presiónalo para entrar.
+
+| Control | Menú principal y lista Bluetooth | Mientras suena la música |
 |---|---|---|
+| Girar el encoder | Moverse | Subir / bajar volumen |
+| Presionar el encoder | Elegir | Volver al menú principal |
 | Botón 1 | Subir | Canción anterior (desde la primera salta a la última) |
 | Botón 2 | Elegir | Pausa / play |
 | Botón 3 | Bajar | Canción siguiente (desde la última vuelve a la primera) |
+
+En la lista de Bluetooth, la primera opción "< Volver" regresa al menú principal. Si ya hay unos audífonos Bluetooth conectados, elegir "Bluetooth" va directo a las canciones.
 
 Al terminar la última canción, la lista vuelve a empezar.
 
@@ -76,6 +90,9 @@ Los audífonos tienen que seguir en modo de emparejamiento hasta que se conecten
 El volumen inicial se cambia en `VOLUMEN_INICIAL`, al inicio del sketch.
 
 ## Notas
+
+- La salida con cable usa el DAC interno de la ESP32 (8 bits). Suena más bajo y con algo de ruido que por Bluetooth, porque los pines de la ESP32 no están hechos para mover audífonos. Para mejor sonido, se puede agregar un módulo DAC I2S **PCM5102A** o, para bocinas, un amplificador **PAM8403**.
+- Los capacitores del jack bloquean la corriente directa (la salida del DAC está centrada en 1.65 V); sin ellos, pasaría corriente continua por los audífonos.
 
 - La ESP32 solo hace Bluetooth clásico (A2DP) con SBC; los AirPods lo soportan, pero no esperes la calidad de AAC.
 - El lector microSD está alimentado desde VIN (5 V). Esto funciona si el módulo tiene regulador a 3.3 V. Si alimentas todo desde la batería a través del TPS63070, revisa que VIN realmente reciba voltaje suficiente para ese regulador.

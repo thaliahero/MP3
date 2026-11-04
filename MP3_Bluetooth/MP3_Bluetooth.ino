@@ -57,9 +57,9 @@ const int PIN_ENC_DT = 33;
 const int PIN_ENC_SW = 4;
 const int PIN_SD_CS = 5;  // SCK=18, MISO=19, MOSI=23 (SPI por defecto)
 // Pantalla I2C: SDA=21, SCL=22 (I2C por defecto)
-const int PIN_I2S_BCK = 26;  // PCM5102A: BCK
-const int PIN_I2S_LCK = 25;  // PCM5102A: LCK (LRCK / WS)
-const int PIN_I2S_DIN = 16;  // PCM5102A: DIN
+const int PIN_DAC_BCK = 26;  // PCM5102A: BCK
+const int PIN_DAC_LCK = 25;  // PCM5102A: LCK (LRCK / WS)
+const int PIN_DAC_DIN = 16;  // PCM5102A: DIN
 
 // ---------------- Objetos ----------------
 
@@ -250,9 +250,9 @@ void cambiarSalida(int nueva) {
     cfg.sample_rate = 44100;
     cfg.channels = 2;
     cfg.bits_per_sample = 16;
-    cfg.pin_bck = PIN_I2S_BCK;
-    cfg.pin_ws = PIN_I2S_LCK;
-    cfg.pin_data = PIN_I2S_DIN;
+    cfg.pin_bck = PIN_DAC_BCK;
+    cfg.pin_ws = PIN_DAC_LCK;
+    cfg.pin_data = PIN_DAC_DIN;
     cfg.pin_mck = -1;  // el PCM5102A no necesita reloj maestro (SCK va a GND)
     cable.begin(cfg);
     player.setOutput(cable);

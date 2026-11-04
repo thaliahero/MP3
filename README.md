@@ -34,9 +34,12 @@ El firmware está en [`MP3_Bluetooth/MP3_Bluetooth.ino`](MP3_Bluetooth/MP3_Bluet
 | | SW | D4 |
 | | + | 3V3 (no 5 V) |
 | | GND | GND |
-| Jack de audio | Izquierdo (punta) | D25, con un capacitor de 100 µF en serie (+ hacia la ESP32) |
-| | Derecho (anillo) | D26, con un capacitor de 100 µF en serie (+ hacia la ESP32) |
-| | Tierra (manga) | GND |
+| Módulo PCM5102A | VIN | 3V3 (algunos módulos aceptan 5 V; mira su serigrafía) |
+| | GND | GND |
+| | BCK | D26 |
+| | LCK | D25 |
+| | DIN | D16 |
+| | SCK | GND (si el módulo trae ese pin) |
 
 Los botones no necesitan resistencias: el código activa las resistencias pull-up internas de la ESP32.
 
@@ -91,8 +94,8 @@ El volumen inicial se cambia en `VOLUMEN_INICIAL`, al inicio del sketch.
 
 ## Notas
 
-- La salida con cable usa el DAC interno de la ESP32 (8 bits). Suena más bajo y con algo de ruido que por Bluetooth, porque los pines de la ESP32 no están hechos para mover audífonos. Para mejor sonido, se puede agregar un módulo DAC I2S **PCM5102A** o, para bocinas, un amplificador **PAM8403**.
-- Los capacitores del jack bloquean la corriente directa (la salida del DAC está centrada en 1.65 V); sin ellos, pasaría corriente continua por los audífonos.
+- La salida con cable usa un módulo DAC **PCM5102A** por I2S. Suena limpio y su salida ya está centrada en 0 V, así que no necesita capacitores. Da nivel de línea, que alcanza para audífonos normales; unos muy exigentes pueden quedar bajos. El jack de 3.5 mm suele venir soldado en el mismo módulo.
+- Muchos módulos PCM5102A traen puentes de soldadura (H1L a H4L, o FLT, DEMP, XSMT y FMT). Déjalos como vienen de fábrica.
 
 - La ESP32 solo hace Bluetooth clásico (A2DP) con SBC; los AirPods lo soportan, pero no esperes la calidad de AAC.
 - El lector microSD está alimentado desde VIN (5 V). Esto funciona si el módulo tiene regulador a 3.3 V. Si alimentas todo desde la batería a través del TPS63070, revisa que VIN realmente reciba voltaje suficiente para ese regulador.

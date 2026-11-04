@@ -2,7 +2,7 @@
  * MP3 casero - ESP32-WROOM
  *
  * Lee los .mp3 y .wav de la microSD y los reproduce por Bluetooth (A2DP) o
- * por la salida de audio con cable (DAC interno de la ESP32 hacia un jack).
+ * por la salida con cable (modulo DAC PCM5102A por I2S, con jack de audio).
  *
  * Menu principal (se maneja con el encoder KY-040):
  *   Girar: elegir "Bluetooth" o "Audifono con cable"
@@ -57,7 +57,9 @@ const int PIN_ENC_DT = 33;
 const int PIN_ENC_SW = 4;
 const int PIN_SD_CS = 5;  // SCK=18, MISO=19, MOSI=23 (SPI por defecto)
 // Pantalla I2C: SDA=21, SCL=22 (I2C por defecto)
-// Audio con cable: GPIO25 = izquierdo, GPIO26 = derecho (DAC interno)
+const int PIN_I2S_BCK = 26;  // PCM5102A: BCK
+const int PIN_I2S_LCK = 25;  // PCM5102A: LCK (LRCK / WS)
+const int PIN_I2S_DIN = 16;  // PCM5102A: DIN
 
 // ---------------- Objetos ----------------
 
@@ -68,7 +70,7 @@ MP3DecoderHelix decoderMP3;
 WAVDecoder decoderWAV;
 MultiDecoder decoder;  // detecta si cada archivo es MP3 o WAV
 A2DPStream out;          // salida Bluetooth
-AnalogAudioStream cable; // salida con cable (DAC en GPIO25 y GPIO26)
+I2SStream cable;         // salida con cable (modulo PCM5102A por I2S)
 AudioPlayer player(source, out, decoder);
 
 U8G2_SH1106_128X64_NONAME_F_HW_I2C pantalla(U8G2_R0, U8X8_PIN_NONE);
@@ -248,6 +250,10 @@ void cambiarSalida(int nueva) {
     cfg.sample_rate = 44100;
     cfg.channels = 2;
     cfg.bits_per_sample = 16;
+    cfg.pin_bck = PIN_I2S_BCK;
+    cfg.pin_ws = PIN_I2S_LCK;
+    cfg.pin_data = PIN_I2S_DIN;
+    cfg.pin_mck = -1;  // el PCM5102A no necesita reloj maestro (SCK va a GND)
     cable.begin(cfg);
     player.setOutput(cable);
   } else if (nueva == SALIDA_BT) {
